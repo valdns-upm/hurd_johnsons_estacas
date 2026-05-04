@@ -8,18 +8,21 @@ def _round_existing_columns(df, columns, decimals):
     if existing_columns:
         df[existing_columns] = df[existing_columns].round(decimals)
 
-
+# -------------------------------------------------------------------------
+# Export all results to CSV and GeoPackage: 
+# normalize and round numeric columns, handle optional validation outputs, 
+# and ensure consistent formatting across all exports.
+# -------------------------------------------------------------------------
 def export_results(
     cleaned_trajectories,
     displacements,
     issues,
-    stakes_summary,
+    stake_historic,
     campaign_summary,
     prediction,
     validation_summary=None,
     validation_details=None,
 ):
-    legacy_stakes_summary_path = Path("outputs/stakes_summary.csv")
     stake_historic_path = Path("outputs/stake_historic.csv")
 
     displacements_export = displacements.drop(
@@ -44,7 +47,7 @@ def export_results(
         index=False
     )
 
-    stakes_export = stakes_summary.copy()
+    stakes_export = stake_historic.copy()
 
     if "dt_days" in stakes_export.columns:
         stakes_export["dt_days"] = stakes_export["dt_days"].round().astype("Int64")
@@ -64,8 +67,6 @@ def export_results(
     )
 
     stakes_export.to_csv(stake_historic_path, index=False)
-    if legacy_stakes_summary_path.exists():
-        legacy_stakes_summary_path.unlink()
 
     campaign_summary.to_csv(
         "outputs/campaign_summary.csv",
@@ -138,7 +139,7 @@ def export_results(
 
     export_geopackage(
         cleaned_trajectories=cleaned_trajectories,
-        stakes_summary=stakes_summary,
+        stake_historic=stake_historic,
         prediction=prediction,
         validation_details=validation_details,
     )

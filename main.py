@@ -2,7 +2,7 @@ from src.io import load_monitoring_metadata, load_multiple_files
 from src.trajectory import build_trajectories, compute_displacements
 from src.analysis import (
     compute_prediction,
-    compute_stake_summary,
+    compute_stake_historic,
     compute_campaign_summary,
     summarize_recent_campaigns,
 )
@@ -10,28 +10,34 @@ from src.validation import evaluate_prediction_with_validation
 from src.pipeline import export_results
 from pathlib import Path
 
+# Role: 
+# Main script to run the entire pipeline
+# Steps: 
+# 1. Load data, 2. Build trajectories, 3. Compute displacements, 4. Compute summaries, 
+# 5. Compute predictions, (6. Optional validation), 7. Export results, 8. Print summary statistics
+
+# Load data
 data_path = "data/raw/"
 validation_path = "data/validation/"
 
-# Setting to change:
-run_validation = True
+run_validation = True    # Set to False to skip validation step, True to run it
 
 df = load_multiple_files(data_path)
 monitoring_df = load_monitoring_metadata(data_path)
 recent_campaigns_summary = summarize_recent_campaigns(df, n_campaigns=2)
 
+# Build trajectories and compute displacements
 trajectories = build_trajectories(df)
 cleaned_trajectories, displacements, issues = compute_displacements(trajectories)
 
 # Compute summaries
-stakes_summary = compute_stake_summary(df, displacements)
+stake_historic = compute_stake_historic(df, displacements)
 campaign_summary = compute_campaign_summary(df)
 
-# Change target date for prediction if needed
 predicted_positions = compute_prediction(
     df,
     displacements,
-    target_date="2025-12-20",
+    target_date="2026-01-10", # Change target date for prediction if needed
     monitoring_df=monitoring_df,
 )
 
@@ -52,7 +58,7 @@ export_results(
     cleaned_trajectories,
     displacements,
     issues,
-    stakes_summary,
+    stake_historic,
     campaign_summary,
     predicted_positions,
     validation_summary=validation_summary,
@@ -60,12 +66,12 @@ export_results(
 )
 
 # Summary statistics
-print("Number of stakes monitored:", len(stakes_summary))
+print("Number of stakes monitored:", len(stake_historic))
 print(
     f"Number of stakes with data in the last two campaigns ({recent_campaigns_summary['recent_campaigns']}):",
     recent_campaigns_summary["stakes_with_recent_campaigns"],
 )
-print("Number of stakes with one measurement:", (stakes_summary["n_points"] == 1).sum())
+print("Number of stakes with one measurement:", (stake_historic["n_points"] == 1).sum())
 print("Number of stakes with outliers:", issues.loc[issues["issue_type"] == "OUTLIER", "stake_id"].nunique())
 
 if validation_summary is not None and not validation_summary.empty:

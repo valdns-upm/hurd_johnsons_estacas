@@ -32,7 +32,7 @@ Outputs (outputs/)
     -> detected issues (ONLY_ONE_POINT, DUPLICATE_DATE, OUTLIER)
     campaign_summary.csv
     -> data availability by stake and campaign
-    stakes_summary.csv
+    stake_historic.csv
     -> summary by stake + historical velocity method/quality
     predictions.csv
     -> projected position (x_pred, y_pred) from historic velocity

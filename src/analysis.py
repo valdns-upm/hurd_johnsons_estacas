@@ -2,6 +2,175 @@ import pandas as pd
 import numpy as np
 
 
+# ---------------------------------------------------------
+# Estimate velocity components (vx, vy) from stake segments:
+# ---------------------------------------------------------
+def estimate_velocity_components(
+    stake_segments,
+):
+    vx_est, vy_est = None, None
+
+    total_dt = stake_segments["dt_days"].sum() if not stake_segments.empty else 0
+    n_segments = len(stake_segments)
+
+    if n_segments >= 2 and total_dt > 0:
+        vx_est = stake_segments["dx"].sum() / total_dt
+        vy_est = stake_segments["dy"].sum() / total_dt
+    return vx_est, vy_est
+
+
+# -----------------------------------------------------------------
+# Main function to compute historic statistics for each stake:
+# Merge metadata of stakes with displacement summaries, 
+# compute mean speed, and identify outliers based on segment speeds
+# -----------------------------------------------------------------
+def compute_stake_historic(df, displacements):
+
+    # METADATA
+    meta = df.groupby("stake_id").agg(
+        first_date=("date", "min"),
+        last_date=("date", "max"),
+        n_points=("date", "count"),
+        glacier=("glacier", "first")
+    ).reset_index()
+    meta.loc[meta["n_points"] == 1, "last_date"] = pd.NaT
+
+    outlier_stakes = set()
+    if len(df) >= 2:
+        for stake_id, group in df.groupby("stake_id"):
+            group = group.sort_values("date").reset_index(drop=True)
+            if len(group) < 2:
+                continue
+
+            for i in range(1, len(group)):
+                p1 = group.iloc[i - 1]
+                p2 = group.iloc[i]
+                dt_days = (p2["date"] - p1["date"]).total_seconds() / 86400
+                if dt_days <= 0:
+                    continue
+
+                dx = p2["x"] - p1["x"]
+                dy = p2["y"] - p1["y"]
+                distance = np.sqrt(dx**2 + dy**2)
+                segment_speed = distance / dt_days
+
+                if segment_speed > 5:  # Threshold for outlier speed in m/day (current: 5 m/day)
+                    outlier_stakes.add(stake_id)
+                    break
+
+    meta["has_outlier_value"] = meta["stake_id"].isin(outlier_stakes)
+
+    # DISPLACEMENTS SUMMARY
+    rows = []
+
+    for stake_id, meta_group in df.groupby("stake_id"):
+
+        group = displacements[displacements["stake_id"] == stake_id].sort_values("date_end")
+
+        # invalid case: no valid segments after cleaning
+        if len(group) == 0:
+            rows.append({
+                "stake_id": stake_id,
+                "valid_segments": 0,
+                "total_dx_m": None,
+                "total_dy_m": None,
+                "total_dz_m": None,
+                "dt_days": None,
+                "mean_speed_m_per_year": None
+            })
+            continue
+
+        total_dx = group["dx"].sum()
+        total_dy = group["dy"].sum()
+        total_dz = group["dz"].sum()
+        total_dt = group["dt_days"].sum()
+
+        total_distance = np.sqrt(total_dx**2 + total_dy**2)
+        mean_speed = total_distance / total_dt if total_dt > 0 else None
+        vx, vy = estimate_velocity_components(
+            stake_segments=group,
+        )
+
+        rows.append({
+            "stake_id": stake_id,
+            "valid_segments": len(group),
+            "total_dx_m": total_dx,
+            "total_dy_m": total_dy,
+            "total_dz_m": total_dz,
+            "dt_days": round(total_dt),
+            "mean_speed_m_per_year": mean_speed * 365 if mean_speed else None,
+            "historic_vx_m_per_day": vx,
+            "historic_vy_m_per_day": vy,
+        })
+
+    summary_disp = pd.DataFrame(rows)
+
+    summary = meta.merge(summary_disp, on="stake_id", how="left")
+    summary["mean_speed_m_per_year"] = summary["mean_speed_m_per_year"].round(2)
+
+    ordered_columns = [
+        "stake_id",
+        "glacier",
+        "n_points",
+        "valid_segments",
+        "first_date",
+        "last_date",
+        "dt_days",
+        "total_dx_m",
+        "total_dy_m",
+        "total_dz_m",
+        "mean_speed_m_per_year",
+        "historic_vx_m_per_day",
+        "historic_vy_m_per_day",
+        "has_outlier_value",
+    ]
+    summary = summary[ordered_columns]
+
+    return summary
+
+# -------------------------------------------------------
+# Summarize data availability per campaign for each stake
+# -------------------------------------------------------
+def compute_campaign_summary(df):
+
+    if "campaign" not in df.columns:
+        raise ValueError("Missing required column: campaign")
+
+    campaign_meta = (
+        df[["campaign"]]
+        .dropna(subset=["campaign"])
+        .drop_duplicates()
+        .sort_values("campaign")
+    )
+
+    rows = []
+
+    for stake_id, group in df.groupby("stake_id"):
+        counts = group["campaign"].value_counts().to_dict()
+
+        for campaign_row in campaign_meta.itertuples(index=False):
+            n = counts.get(campaign_row.campaign, 0)
+
+            if n == 0:
+                status = "NO_DATA"
+            elif n == 1:
+                status = "ONE_MEASUREMENT"
+            else:
+                status = "MULTIPLE_MEASUREMENTS"
+
+            rows.append({
+                "stake_id": stake_id,
+                "campaign": campaign_row.campaign,
+                "n_measurements": n,
+                "status": status
+            })
+
+    return pd.DataFrame(rows).sort_values(["stake_id", "campaign"])
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# build a status of prediction for each stake: predicted, unpredicted (lost, not anymore monitored, single measurement)
+# ---------------------------------------------------------------------------------------------------------------------
 def build_prediction_status(df, monitoring_df, displacements):
     if df.empty:
         return pd.DataFrame(columns=[
@@ -89,163 +258,11 @@ def build_prediction_status(df, monitoring_df, displacements):
     return status[["stake_id", "prediction_status", "prediction_status_detail"]]
 
 
-def estimate_velocity_components(
-    stake_segments,
-):
-    vx_est, vy_est = None, None
-
-    total_dt = stake_segments["dt_days"].sum() if not stake_segments.empty else 0
-    n_segments = len(stake_segments)
-
-    if n_segments >= 2 and total_dt > 0:
-        vx_est = stake_segments["dx"].sum() / total_dt
-        vy_est = stake_segments["dy"].sum() / total_dt
-    return vx_est, vy_est
-
-
-# Main function to compute summary statistics for each stake
-def compute_stake_summary(df, displacements):
-
-    # METADATA
-    meta = df.groupby("stake_id").agg(
-        first_date=("date", "min"),
-        last_date=("date", "max"),
-        n_points=("date", "count"),
-        glacier=("glacier", "first")
-    ).reset_index()
-    meta.loc[meta["n_points"] == 1, "last_date"] = pd.NaT
-
-    outlier_stakes = set()
-    if len(df) >= 2:
-        for stake_id, group in df.groupby("stake_id"):
-            group = group.sort_values("date").reset_index(drop=True)
-            if len(group) < 2:
-                continue
-
-            for i in range(1, len(group)):
-                p1 = group.iloc[i - 1]
-                p2 = group.iloc[i]
-                dt_days = (p2["date"] - p1["date"]).total_seconds() / 86400
-                if dt_days <= 0:
-                    continue
-
-                dx = p2["x"] - p1["x"]
-                dy = p2["y"] - p1["y"]
-                distance = np.sqrt(dx**2 + dy**2)
-                segment_speed = distance / dt_days
-
-                if segment_speed > 5:
-                    outlier_stakes.add(stake_id)
-                    break
-
-    meta["has_outlier_value"] = meta["stake_id"].isin(outlier_stakes)
-
-    # DISPLACEMENTS SUMMARY
-    rows = []
-
-    for stake_id, meta_group in df.groupby("stake_id"):
-
-        group = displacements[displacements["stake_id"] == stake_id].sort_values("date_end")
-
-        # invalid case: no valid segments after cleaning
-        if len(group) == 0:
-            rows.append({
-                "stake_id": stake_id,
-                "valid_segments": 0,
-                "total_dx_m": None,
-                "total_dy_m": None,
-                "total_dz_m": None,
-                "dt_days": None,
-                "mean_speed_m_per_year": None
-            })
-            continue
-
-        total_dx = group["dx"].sum()
-        total_dy = group["dy"].sum()
-        total_dz = group["dz"].sum()
-        total_dt = group["dt_days"].sum()
-
-        total_distance = np.sqrt(total_dx**2 + total_dy**2)
-        mean_speed = total_distance / total_dt if total_dt > 0 else None
-        vx, vy = estimate_velocity_components(
-            stake_segments=group,
-        )
-
-        rows.append({
-            "stake_id": stake_id,
-            "valid_segments": len(group),
-            "total_dx_m": total_dx,
-            "total_dy_m": total_dy,
-            "total_dz_m": total_dz,
-            "dt_days": round(total_dt),
-            "mean_speed_m_per_year": mean_speed * 365 if mean_speed else None,
-            "historic_vx_m_per_day": vx,
-            "historic_vy_m_per_day": vy,
-        })
-
-    summary_disp = pd.DataFrame(rows)
-
-    summary = meta.merge(summary_disp, on="stake_id", how="left")
-    summary["mean_speed_m_per_year"] = summary["mean_speed_m_per_year"].round(2)
-
-    ordered_columns = [
-        "stake_id",
-        "glacier",
-        "n_points",
-        "valid_segments",
-        "first_date",
-        "last_date",
-        "dt_days",
-        "total_dx_m",
-        "total_dy_m",
-        "total_dz_m",
-        "mean_speed_m_per_year",
-        "historic_vx_m_per_day",
-        "historic_vy_m_per_day",
-        "has_outlier_value",
-    ]
-    summary = summary[ordered_columns]
-
-    return summary
-
-# Summarize data availability per campaign for each stake
-def compute_campaign_summary(df):
-
-    if "campaign" not in df.columns:
-        raise ValueError("Missing required column: campaign")
-
-    campaign_meta = (
-        df[["campaign"]]
-        .dropna(subset=["campaign"])
-        .drop_duplicates()
-        .sort_values("campaign")
-    )
-
-    rows = []
-
-    for stake_id, group in df.groupby("stake_id"):
-        counts = group["campaign"].value_counts().to_dict()
-
-        for campaign_row in campaign_meta.itertuples(index=False):
-            n = counts.get(campaign_row.campaign, 0)
-
-            if n == 0:
-                status = "NO_DATA"
-            elif n == 1:
-                status = "ONE_MEASUREMENT"
-            else:
-                status = "MULTIPLE_MEASUREMENTS"
-
-            rows.append({
-                "stake_id": stake_id,
-                "campaign": campaign_row.campaign,
-                "n_measurements": n,
-                "status": status
-            })
-
-    return pd.DataFrame(rows).sort_values(["stake_id", "campaign"])
-
-# Predict future position using the same shared velocity logic as the summary
+# -------------------------------------------------------------------------
+# Predict future position:
+# Use last known position and date, compute time difference to target date, 
+# and apply velocity to predict new position
+# -------------------------------------------------------------------------
 def compute_prediction(df, displacements, target_date, monitoring_df=None):
 
     last_positions = (
@@ -305,7 +322,9 @@ def compute_prediction(df, displacements, target_date, monitoring_df=None):
     return pd.DataFrame(rows)
 
 
+# -------------------------------------------------------
 # Count number of stakes with data from recent campaigns
+# -------------------------------------------------------
 def summarize_recent_campaigns(df, n_campaigns=2):
     if "campaign" not in df.columns:
         raise ValueError("Missing required column: campaign")

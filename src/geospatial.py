@@ -25,8 +25,11 @@ def _empty_geodataframe(columns, crs):
     gpd, _, _ = _load_geospatial_dependencies()
     return gpd.GeoDataFrame(columns=columns, geometry="geometry", crs=crs)
 
-
-def build_historic_layer(cleaned_trajectories, stakes_summary, prediction, crs=DEFAULT_CRS):
+# -------------------------------------------------------------------------
+# Layer of historic trajectories, from stake_historic.csv
+# Only keeps stakes that have a prediction, to form a trajectory linestring
+# -------------------------------------------------------------------------
+def build_historic_layer(cleaned_trajectories, stake_historic, prediction, crs=DEFAULT_CRS):
     gpd, LineString, _ = _load_geospatial_dependencies()
     predicted_stake_ids = set(
         prediction.loc[prediction["prediction_status"] == "predicted", "stake_id"]
@@ -64,7 +67,7 @@ def build_historic_layer(cleaned_trajectories, stakes_summary, prediction, crs=D
         )
 
     historic = gpd.GeoDataFrame(records, geometry="geometry", crs=crs)
-    return historic.merge(stakes_summary.copy(), on="stake_id", how="left")
+    return historic.merge(stake_historic.copy(), on="stake_id", how="left")
 
 
 def build_predictions_layer(prediction, crs=DEFAULT_CRS):
@@ -130,16 +133,20 @@ def build_validation_layer(validation_details, crs=DEFAULT_CRS):
     return gpd.GeoDataFrame(validation_layer, geometry="geometry", crs=crs)
 
 
+# ------------------------------------------------------------------------------------
+# Main function to export geospatial layers to a GeoPackage
+# Layers: historic trajectories, predictions, unpredicted points, (validation details)
+# ------------------------------------------------------------------------------------
 def export_geopackage(
     cleaned_trajectories,
-    stakes_summary,
+    stake_historic,
     prediction,
     validation_details=None,
     output_path="outputs/results.gpkg",
     crs=DEFAULT_CRS,
 ):
     layers = [
-        ("historic", build_historic_layer(cleaned_trajectories, stakes_summary, prediction, crs=crs)),
+        ("historic", build_historic_layer(cleaned_trajectories, stake_historic, prediction, crs=crs)),
         ("predictions", build_predictions_layer(prediction, crs=crs)),
         ("unpredicted_points", build_unpredicted_points_layer(prediction, crs=crs)),
         ("validation", build_validation_layer(validation_details, crs=crs)),
