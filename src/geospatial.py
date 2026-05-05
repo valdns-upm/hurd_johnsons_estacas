@@ -110,7 +110,7 @@ def build_unpredicted_points_layer(prediction, crs=DEFAULT_CRS):
     return gpd.GeoDataFrame(points_layer, geometry="geometry", crs=crs)
 
 
-def build_validation_layer(validation_details, crs=DEFAULT_CRS):
+def build_validation_error_lines_layer(validation_details, crs=DEFAULT_CRS):
     gpd, LineString, _ = _load_geospatial_dependencies()
 
     if validation_details is None or validation_details.empty:
@@ -133,9 +133,31 @@ def build_validation_layer(validation_details, crs=DEFAULT_CRS):
     return gpd.GeoDataFrame(validation_layer, geometry="geometry", crs=crs)
 
 
+def build_validation_observed_points_layer(validation_details, crs=DEFAULT_CRS):
+    gpd, _, Point = _load_geospatial_dependencies()
+
+    if validation_details is None or validation_details.empty:
+        return _empty_geodataframe(["geometry"], crs)
+
+    validation_points_layer = validation_details.dropna(
+        subset=["x_obs", "y_obs"]
+    ).copy()
+
+    if validation_points_layer.empty:
+        return _empty_geodataframe(list(validation_details.columns) + ["geometry"], crs)
+
+    validation_points_layer["geometry"] = validation_points_layer.apply(
+        lambda row: Point(row["x_obs"], row["y_obs"]),
+        axis=1,
+    )
+
+    return gpd.GeoDataFrame(validation_points_layer, geometry="geometry", crs=crs)
+
+
 # ------------------------------------------------------------------------------------
 # Main function to export geospatial layers to a GeoPackage
-# Layers: historic trajectories, predictions, unpredicted points, (validation details)
+# Layers: historic trajectories, predictions, unpredicted points,
+# validation error lines and validation observed points
 # ------------------------------------------------------------------------------------
 def export_geopackage(
     cleaned_trajectories,
@@ -149,7 +171,8 @@ def export_geopackage(
         ("historic", build_historic_layer(cleaned_trajectories, stake_historic, prediction, crs=crs)),
         ("predictions", build_predictions_layer(prediction, crs=crs)),
         ("unpredicted_points", build_unpredicted_points_layer(prediction, crs=crs)),
-        ("validation", build_validation_layer(validation_details, crs=crs)),
+        ("validation_error_lines", build_validation_error_lines_layer(validation_details, crs=crs)),
+        ("validation_observed_points", build_validation_observed_points_layer(validation_details, crs=crs)),
     ]
     layers = [(name, layer) for name, layer in layers if not layer.empty]
 

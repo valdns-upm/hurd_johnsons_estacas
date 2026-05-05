@@ -1,46 +1,72 @@
 README - Estacas
 
 Objective
-    Read Excel files of stake measurements (Hurd and Johnson), compute cleaned trajectories,
-    estimate historical stake velocity, and project stake positions to a target date.
+    Read Excel files of stake measurements,
+    compute historical displacements, predict stake positions at a target date,
+    and optionally validate predictions with a later campaign.
 
 Input data
-    .xlsx files with tabs:
+    Excel files in:
+        data/raw/
+        data/validation/   (optional)
+
+    Sheets expected:
         Estacas Hurd
         Estacas Johnsons
-    Columns used: Id. estaca, Fecha, X (E-UTM), Y (N-UTM), Z (WGS84)
+
+    Columns used:
+        Id. estaca
+        Fecha
+        X (E-UTM)
+        Y (N-UTM)
+        Z (WGS84)
 
 Workflow
-    Automatic loading of all Excel files (in data/raw/)
-    Date & missing-value cleaning
-    Trajectory reconstruction by stake
-    Segment displacement/speed calculation
-    Point-level outlier handling:
-        Abnormal measurement points are removed
-        Remaining valid points are kept for calculations
-    Velocity model by stake:
-        method priority = GLOBAL -> LAST -> GLACIER
-    Future velocity estimate for prediction:
-        same method priority = GLOBAL -> LAST -> GLACIER
+    Loading of all Excel files in data/raw/
+    Date normalization + missing-value cleaning
+    Trajectory reconstruction, by stake
+    Removal of abnormal points
+    Displacement calculation between valid points
+    Historical velocity estimation
     Linear position prediction to a target date
-    Optional validation on files in data/validation/, enabled manually in main.py with run_validation = True
+    (Optional validation with files in data/validation/)
+    Export of CSV results and GeoPackage layers
 
-Outputs (outputs/)
+Current settings to change in main.py
+    Validation enabled: True
+    Prediction target date: 2026-01-10
+
+Run
+    python main.py
+
+Main outputs (outputs/)
     displacements_list.csv
-    -> valid displacements and segment speeds
+    -> valid displacements between cleaned points
+
     trajectory_issues.csv
-    -> detected issues (ONLY_ONE_POINT, DUPLICATE_DATE, OUTLIER)
+    -> detected issues:
+       ONLY_ONE_POINT, DUPLICATE_DATE, OUTLIER
+
     campaign_summary.csv
-    -> data availability by stake and campaign
+    -> number of measurements per stake and campaign
+
     stake_historic.csv
-    -> summary by stake + historical velocity method/quality
+    -> historical summary and estimated velocity by stake
+
     predictions.csv
-    -> projected position (x_pred, y_pred) from historic velocity
+    -> predicted position and prediction status for each stake
+
     validation_summary.csv
-    -> aggregate prediction errors on validation data
+    -> global validation metrics
+
     validation_details.csv
-    -> per-stake validation prediction errors
+    -> prediction errors for each validated stake
+
+    results.gpkg
+    -> GIS layers for historic trajectories, predictions, unpredicted stakes,
+       and validation results
 
 Notes
-    Dates are normalized before parsing (dd-mm-yy -> dd-mm-yyyy).
-    Stakes with outliers can still use GLOBAL if enough valid data remains after cleaning.
+    Dates are normalized before parsing, including 2-digit years.
+    Stakes with fewer than 2 valid segments are not predicted.
+    Stakes marked as lost or no longer monitored are also not predicted.

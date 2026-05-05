@@ -3,7 +3,9 @@ import numpy as np
 
 from src.analysis import estimate_velocity_components
 
-
+# -------------------------------------------------------------------------------------------------------------------
+# Validation: compare observation data from the next campain with predicted position from the model at the same date.
+# -------------------------------------------------------------------------------------------------------------------
 def evaluate_prediction_with_validation(
     train_df,
     validation_df,
