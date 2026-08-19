@@ -1,6 +1,63 @@
 from pathlib import Path
 
+import pandas as pd
+
 from src.geospatial import export_geopackage
+
+
+def export_kriging_inputs(
+    displacements,
+    output_dir="outputs/kriging",
+    start_date=None,
+    end_date=None,
+    velocity_unit="m_per_day",
+):
+    """Export Johnsons stake velocities as X Y value files for kriging.
+
+    One row is written per valid displacement segment. Coordinates are the
+    midpoint of the segment, so the velocity is associated with the position
+    where it is representative. The two components are exported separately.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    data = displacements.copy()
+    if data.empty:
+        raise ValueError("No displacement segment is available for kriging export")
+
+    data = data[data["glacier"].astype(str).str.lower().eq("johnson")].copy()
+    if start_date is not None:
+        start_date = pd.Timestamp(start_date)
+    if end_date is not None:
+        end_date = pd.Timestamp(end_date)
+    if start_date is not None:
+        data = data[data["date_start"] >= start_date]
+    if end_date is not None:
+        data = data[data["date_end"] <= end_date]
+    if data.empty:
+        raise ValueError("No Johnsons displacement matches the requested period")
+
+    scale = {"m_per_day": 1.0, "m_per_year": 365.0, "m_per_second": 1.0 / 86400.0}
+    if velocity_unit not in scale:
+        raise ValueError(f"Unsupported velocity unit: {velocity_unit}")
+
+    data["vx"] = data["dx"] / data["dt_days"] * scale[velocity_unit]
+    data["vy"] = data["dy"] / data["dt_days"] * scale[velocity_unit]
+    columns = ["x", "y"]
+    data[columns + ["vx"]].to_csv(
+        output_path / "Johnsons_vx.dat", sep="\t", index=False, header=False,
+        float_format="%.8g"
+    )
+    data[columns + ["vy"]].to_csv(
+        output_path / "Johnsons_vy.dat", sep="\t", index=False, header=False,
+        float_format="%.8g"
+    )
+
+    # Keep a CSV with stake/date provenance for traceability.
+    data[["stake_id", "date_start", "date_end", "x", "y", "vx", "vy"]].to_csv(
+        output_path / "Johnsons_velocity_metadata.csv", index=False
+    )
+    return data
 
 
 def _round_existing_columns(df, columns, decimals):

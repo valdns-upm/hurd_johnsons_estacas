@@ -187,7 +187,12 @@ def load_single_file(file_path):
 def load_multiple_files(folder_path):
     dfs = []
 
-    for file in Path(folder_path).glob("*.xlsx"):
+    # The historical Johnsons files include both .xls and .xlsx files.
+    files = sorted(
+        list(Path(folder_path).glob("*.xls"))
+        + list(Path(folder_path).glob("*.xlsx"))
+    )
+    for file in files:
         df = load_single_file(file)
         dfs.append(df)
 
@@ -197,7 +202,11 @@ def load_multiple_files(folder_path):
 def load_monitoring_metadata(folder_path):
     dfs = []
 
-    for file in Path(folder_path).glob("*.xlsx"):
+    files = sorted(
+        list(Path(folder_path).glob("*.xls"))
+        + list(Path(folder_path).glob("*.xlsx"))
+    )
+    for file in files:
         df = extract_monitoring_metadata(file)
         dfs.append(df)
 
