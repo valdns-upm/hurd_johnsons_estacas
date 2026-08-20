@@ -7,7 +7,7 @@ from src.analysis import (
     summarize_recent_campaigns,
 )
 from src.validation import evaluate_prediction_with_validation
-from src.pipeline import export_results
+from src.pipeline import export_results, export_kriging_inputs
 from pathlib import Path
 
 # Role: 
@@ -20,7 +20,7 @@ from pathlib import Path
 data_path = "data/raw/"
 validation_path = "data/validation/"
 
-run_validation = True    # Set to False to skip validation step, True to run it
+run_validation = False    # Set to False to skip validation step, True to run it
 
 df = load_multiple_files(data_path)
 monitoring_df = load_monitoring_metadata(data_path)
@@ -63,6 +63,16 @@ export_results(
     predicted_positions,
     validation_summary=validation_summary,
     validation_details=validation_details,
+)
+
+# Inputs for the ordinary-kriging program.  Set these dates to isolate a
+# particular observation interval; None exports all valid Johnsons segments.
+export_kriging_inputs(
+    displacements,
+    output_dir="outputs/kriging",
+    start_date=None,
+    end_date=None,
+    velocity_unit="m_per_day",
 )
 
 # Summary statistics

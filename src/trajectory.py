@@ -95,6 +95,9 @@ def compute_displacements(trajectories):
                 "glacier": p2["glacier"],
                 "date_start": p1["date"],
                 "date_end": p2["date"],
+                # Position associated with the mean velocity over the segment.
+                "x": (p1["x"] + p2["x"]) / 2.0,
+                "y": (p1["y"] + p2["y"]) / 2.0,
                 "dt_days": dt_days,
                 "dx": dx,
                 "dy": dy,

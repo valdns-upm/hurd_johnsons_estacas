@@ -70,3 +70,8 @@ Notes
     Dates are normalized before parsing, including 2-digit years.
     Stakes with fewer than 2 valid segments are not predicted.
     Stakes marked as lost or no longer monitored are also not predicted.
+
+Start execution here
+    Need to activate the environment 'estacas'
+    source /data/envs/estacas/bin/activate
+    (Procedure to simplify later)

@@ -13,7 +13,7 @@ def estimate_velocity_components(
     total_dt = stake_segments["dt_days"].sum() if not stake_segments.empty else 0
     n_segments = len(stake_segments)
 
-    if n_segments >= 2 and total_dt > 0:
+    if n_segments >= 1 and total_dt > 0:
         vx_est = stake_segments["dx"].sum() / total_dt
         vy_est = stake_segments["dy"].sum() / total_dt
     return vx_est, vy_est
